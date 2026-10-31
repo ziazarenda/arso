@@ -193,7 +193,8 @@ def collect_files(addon):
                 files.append((path, prefix + relative))
 
     # The license travels with the add-on (the GPL expects it).
-    has_license = any(name.upper().startswith("LICENSE") for _, name in files if "/" not in name.removeprefix(prefix))
+    top_level = [name.removeprefix(prefix) for _, name in files if "/" not in name.removeprefix(prefix)]
+    has_license = any(name.upper().startswith("LICENSE") for name in top_level)
     licenses = sorted(ROOT.glob("LICENSE*"))
 
     if licenses and not has_license:
