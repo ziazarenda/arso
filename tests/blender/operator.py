@@ -137,7 +137,7 @@ def parent_child(parent_scale, child_rotation, child_scale):
     return parent, child
 
 
-def run_both(label, parent_scale, child_rotation, child_scale, assert_in_place=True):
+def run_both(label, parent_scale, child_rotation, child_scale):
     parent, child = parent_child(parent_scale, child_rotation, child_scale)
     parent_before, child_before = world_points(parent), world_points(child)
     select(parent, child)
@@ -147,20 +147,28 @@ def run_both(label, parent_scale, child_rotation, child_scale, assert_in_place=T
     centered = local_median(parent).length < 1e-4 and local_median(child).length < 1e-4
     detail = f"parent off by {off_parent:.5f}, child off by {off_child:.5f}"
 
-    if assert_in_place:
-        check(f"{label}: run finishes", result == {"FINISHED"})
-        check(f"{label}: geometry stays in place ({detail})", off_parent < 1e-4 and off_child < 1e-4)
-        check(f"{label}: origins centered", centered)
-    else:
-        # Not asserted: Blender's own Apply behaves this way for a sheared
-        # hierarchy. Printed so the result is visible.
-        print(f"INFO: {label}: {detail}, origins centered: {centered}")
+    check(f"{label}: run finishes", result == {"FINISHED"})
+    check(f"{label}: geometry stays in place ({detail})", off_parent < 1e-4 and off_child < 1e-4)
+    check(f"{label}: origins centered", centered)
 
 
 run_both("both, uniform parent scale, rotated and scaled child", (2, 2, 2), (0.1, 0.7, 0.2), (2, 2, 1))
 run_both("both, non-uniform parent scale, plain child", (1, 2, 3), (0, 0, 0), (1, 1, 1))
-run_both("both, non-uniform parent scale, rotated and scaled child", (1, 2, 3), (0.1, 0.7, 0.2), (2, 2, 1),
-         assert_in_place=False)
+
+
+# Blender's own Apply moves this child 5.8 units (a shear cannot be held in
+# location/rotation/scale). The add-on must notice, change nothing, and say so.
+parent, child = parent_child((1, 2, 3), (0.1, 0.7, 0.2), (2, 2, 1))
+parent_before, child_before = world_points(parent), world_points(child)
+scales = (tuple(parent.scale), tuple(child.scale))
+meshes = (parent.data, child.data)
+select(parent, child)
+check("sheared hierarchy is refused", run() == {"CANCELLED"})
+check("sheared hierarchy: parent unchanged", deviation(world_points(parent), parent_before) < 1e-4)
+check("sheared hierarchy: child unchanged", deviation(world_points(child), child_before) < 1e-4)
+check("sheared hierarchy: transforms restored", (tuple(parent.scale), tuple(child.scale)) == scales)
+check("sheared hierarchy: original mesh data restored", (parent.data, child.data) == meshes)
+check("sheared hierarchy: no temporary mesh data left", len(bpy.data.meshes) == 2)
 
 # --- 3. a curve and an unsupported object; selection and active object come back
 clean_scene()

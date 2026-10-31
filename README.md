@@ -1,6 +1,6 @@
 # Apply Rotation, Scale, Origin
 
-Author: ziazarenda. Blender 5.2 or newer.
+Author: ziazarenda. Blender 4.0 or newer.
 
 Apply rotation and scale, then move each selected mesh or curve's origin to its geometry center. The origin uses Blender's **Median** method, as in the original addon.
 
@@ -37,8 +37,9 @@ The error identifies the affected object. Fix it and run the command again.
 - Mesh has no vertices, or curve has no points.
 - Curve is 2D: Blender's Apply Rotation operation requires changing it to 3D first.
 - A child whose transforms may need adjustment cannot be edited.
+- A parent with non-uniform scale (for example 1, 2, 3) that has a rotated child. Blender's own Apply cannot hold this in place, because the combination is a shear that location/rotation/scale cannot store, and it silently moves the child. This add-on checks the result, undoes everything and reports **No objects changed**. Make the parent's scale uniform or unparent the child first.
 
-One blocked object stops the selected batch before any changes. Other native Blender restrictions are caught during the operation and trigger recovery.
+One blocked object stops the selected batch before any changes. Other native Blender restrictions, and the shear case above, are caught during the operation and trigger recovery.
 
 Modifiers are kept. Applying transforms or moving the origin can affect modifiers that depend on local coordinates or the origin, just as with Blender's own commands. Review the result before continuing.
 

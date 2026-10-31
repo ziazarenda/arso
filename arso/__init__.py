@@ -2,7 +2,7 @@ bl_info = {
     "name": "Apply Rotation, Scale, Origin",
     "author": "ziazarenda",
     "version": (1, 0, 0),
-    "blender": (5, 2, 0),
+    "blender": (4, 0, 0),
     "location": "Object > Apply > Rotation, Scale, Origin",
     "description": "Apply rotation and scale, then center origins on the selected meshes and curves",
     "category": "Object",
@@ -85,6 +85,43 @@ def transform_snapshot(obj):
     return values
 
 
+SAMPLE_LIMIT = 64
+
+
+def sample_points(obj, include_axes):
+    """World-space points that must not move.
+
+    Geometry: mesh vertices and curve points, at most SAMPLE_LIMIT of them so a
+    large mesh stays cheap to check. Axes: the four columns of the world matrix
+    (position, rotation, scale and any shear). Axes are only meaningful for
+    objects this command does not process, because applying rotation and scale
+    changes the processed objects' own matrices on purpose.
+    """
+    matrix = obj.matrix_world
+    points = [tuple(matrix.col[i])[:3] for i in range(4)] if include_axes else []
+    if obj.type == 'MESH':
+        vertices = obj.data.vertices
+        step = len(vertices) // SAMPLE_LIMIT + 1
+        points.extend(tuple(matrix @ vertices[i].co) for i in range(0, len(vertices), step))
+    elif obj.type == 'CURVE':
+        local = [p.co.xyz for spline in obj.data.splines for p in (*spline.points, *spline.bezier_points)]
+        step = len(local) // SAMPLE_LIMIT + 1
+        points.extend(tuple(matrix @ co) for co in local[::step])
+    return points
+
+
+def moved(before, after):
+    """True if any sampled point ended up somewhere else."""
+    if len(before) != len(after):
+        return True
+    scale = max([1.0] + [abs(c) for point in before for c in point])
+    tolerance = 1e-4 * scale
+    return any(
+        max(abs(a - b) for a, b in zip(old, new)) > tolerance
+        for old, new in zip(before, after)
+    )
+
+
 def remove_unused_data(data, object_type):
     """Remove temporary data only when nothing uses it."""
     if (data.users == 0 and not data.use_fake_user and data.library is None
@@ -132,6 +169,7 @@ class OBJECT_OT_apply_rotation_scale_origin(bpy.types.Operator):
                 return {'CANCELLED'}
             context.view_layer.update()
             transforms = {obj: transform_snapshot(obj) for obj in affected}
+            positions = {obj: sample_points(obj, obj not in objects) for obj in affected}
         except Exception as exc:
             self.report({'WARNING'}, f'Could not check the selection: {short_error(exc)}. No objects changed')
             return {'CANCELLED'}
@@ -173,6 +211,16 @@ class OBJECT_OT_apply_rotation_scale_origin(bpy.types.Operator):
                     if 'FINISHED' not in result:
                         raise RuntimeError('Blender did not finish centering the origin')
                     context.view_layer.update()
+
+            # Blender cannot hold some hierarchies in place (a parent with
+            # non-uniform scale and a rotated child makes a shear). Its own
+            # Apply moves them silently, so check and recover instead.
+            step = 'keep its position'
+            for current in affected:
+                if moved(positions[current], sample_points(current, current not in objects)):
+                    raise RuntimeError(
+                        "Blender cannot hold this hierarchy in place (a parent with non-uniform scale "
+                        "and a rotated child). Make the parent's scale uniform or unparent first")
 
         except Exception as exc:
             failure = f"'{current.name}': could not {step}: {short_error(exc)}"

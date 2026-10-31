@@ -97,6 +97,58 @@ messages = addon.object_problems(curve)
 check("2D curve blocks", any("2D" in p for p in messages))
 check("curve without points blocks", any("no points" in p for p in messages))
 
+# position checking (used to catch hierarchies Blender cannot hold in place)
+class Matrix:
+    """Scale then offset, with columns like mathutils: col[0..2] axes, col[3] position."""
+
+    def __init__(self, scale=1.0, offset=(0, 0, 0)):
+        self.scale, self.offset = scale, offset
+        self.col = [(scale, 0, 0, 0), (0, scale, 0, 0), (0, 0, scale, 0), (*offset, 1)]
+
+    def __matmul__(self, co):
+        return tuple(self.scale * c + o for c, o in zip(co, self.offset))
+
+
+def mesh_obj(matrix, count, spacing=1.0):
+    vertices = [NS(co=(i * spacing, 0.0, 0.0)) for i in range(count)]
+    return Fake(type="MESH", matrix_world=matrix, data=NS(vertices=vertices))
+
+
+small = addon.sample_points(mesh_obj(Matrix(2.0, (1, 0, 0)), 3), True)
+check("sample_points: 4 axes + every vertex of a small mesh", len(small) == 4 + 3)
+check("sample_points: vertices are in world space", small[4] == (1.0, 0.0, 0.0) and small[6] == (5.0, 0.0, 0.0))
+big = addon.sample_points(mesh_obj(Matrix(), 10000), True)
+check("sample_points: large meshes are sampled, not copied", 4 < len(big) <= 4 + addon.SAMPLE_LIMIT + 1)
+
+spline = NS(points=[NS(co=NS(xyz=(0.0, 0.0, 0.0)))], bezier_points=[NS(co=NS(xyz=(1.0, 1.0, 1.0)))])
+curve_sample = addon.sample_points(Fake(type="CURVE", matrix_world=Matrix(), data=NS(splines=[spline])), True)
+check("sample_points: curve points and bezier points", len(curve_sample) == 4 + 2)
+
+empty_sample = addon.sample_points(Fake(type="EMPTY", matrix_world=Matrix(3.0, (1, 2, 3))), True)
+check("sample_points: other objects use their axes only", len(empty_sample) == 4)
+
+before = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]
+processed = addon.sample_points(mesh_obj(Matrix(2.0, (1, 0, 0)), 3), False)
+check("sample_points: processed objects are compared by geometry only", len(processed) == 3)
+# Applying a scale of 2 doubles the vertex coordinates and resets the scale to 1:
+# the object's own matrix changes, the geometry does not move.
+check("applying scale is not movement for processed objects",
+      not addon.moved(addon.sample_points(mesh_obj(Matrix(2.0), 3), False),
+                      addon.sample_points(mesh_obj(Matrix(1.0), 3, spacing=2.0), False)))
+check("the same change would count as movement for an unprocessed object",
+      addon.moved(addon.sample_points(mesh_obj(Matrix(2.0), 3), True),
+                  addon.sample_points(mesh_obj(Matrix(1.0), 3, spacing=2.0), True)))
+check("sample_points: unprocessed objects without geometry use only their axes",
+      addon.sample_points(Fake(type="EMPTY", matrix_world=Matrix()), False) == [])
+
+check("moved: identical points", not addon.moved(before, [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]))
+check("moved: float noise is ignored", not addon.moved(before, [(1e-7, 0.0, 0.0), (1.0, 0.0, 1e-7)]))
+check("moved: a real shift is caught", addon.moved(before, [(0.0, 0.0, 0.0), (1.0, 0.5, 0.0)]))
+check("moved: a changed point count is caught", addon.moved(before, before[:1]))
+far = [(1000.0, 0.0, 0.0)]
+check("moved: tolerance grows with scene size", not addon.moved(far, [(1000.05, 0.0, 0.0)]))
+check("moved: but a big shift at scale is still caught", addon.moved(far, [(1010.0, 0.0, 0.0)]))
+
 # recovery data cleanup
 def data(users=0, fake=False, library=None, asset=None):
     return NS(users=users, use_fake_user=fake, library=library, asset_data=asset)
