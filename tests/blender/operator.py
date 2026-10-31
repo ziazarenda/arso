@@ -170,6 +170,51 @@ check("sheared hierarchy: transforms restored", (tuple(parent.scale), tuple(chil
 check("sheared hierarchy: original mesh data restored", (parent.data, child.data) == meshes)
 check("sheared hierarchy: no temporary mesh data left", len(bpy.data.meshes) == 2)
 
+# Far from the origin float error is larger; valid work must not be refused there.
+clean_scene()
+far_object = make_mesh("far", size=(1, 2, 3), offset=(10000, 5000, 2000))
+far_object.rotation_euler = (0.3, 0.2, 0.1)
+far_object.scale = (2, 1, 1)
+refresh()
+far_before = world_points(far_object)
+select(far_object)
+check("object 10000 units from the origin is accepted", run() == {"FINISHED"})
+check("object 10000 units from the origin stays in place",
+      deviation(world_points(far_object), far_before) < 0.05)
+
+# Children with constraints or drivers: Blender may or may not keep them in place.
+# Whatever it does, the command must never leave anything moved.
+
+
+def never_leaves_moved(label, setup):
+    parent, child = parent_child((2, 2, 2), (0.1, 0.2, 0.3), (1, 1, 1))
+    setup(child)
+    refresh()
+    parent_before, child_before = world_points(parent), world_points(child)
+    select(parent)
+    result = run()
+    check(f"{label}: command ends cleanly ({sorted(result)})", result in ({"FINISHED"}, {"CANCELLED"}))
+    check(f"{label}: parent geometry unchanged", deviation(world_points(parent), parent_before) < 1e-3)
+    check(f"{label}: child geometry unchanged", deviation(world_points(child), child_before) < 1e-3)
+
+
+def add_constraint(child):
+    target = bpy.data.objects.new("target", None)
+    bpy.context.scene.collection.objects.link(target)
+    target.location = (3, 4, 5)
+    constraint = child.constraints.new("COPY_LOCATION")
+    constraint.target = target
+
+
+def add_driver(child):
+    curve = child.driver_add("location", 0)
+    curve.driver.type = "SCRIPTED"
+    curve.driver.expression = "2.5"
+
+
+never_leaves_moved("child with a constraint", add_constraint)
+never_leaves_moved("child with a driver", add_driver)
+
 # --- 3. a curve and an unsupported object; selection and active object come back
 clean_scene()
 box = make_mesh("box", offset=(2, 0, 0))

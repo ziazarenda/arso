@@ -146,8 +146,15 @@ check("moved: float noise is ignored", not addon.moved(before, [(1e-7, 0.0, 0.0)
 check("moved: a real shift is caught", addon.moved(before, [(0.0, 0.0, 0.0), (1.0, 0.5, 0.0)]))
 check("moved: a changed point count is caught", addon.moved(before, before[:1]))
 far = [(1000.0, 0.0, 0.0)]
-check("moved: tolerance grows with scene size", not addon.moved(far, [(1000.05, 0.0, 0.0)]))
-check("moved: but a big shift at scale is still caught", addon.moved(far, [(1010.0, 0.0, 0.0)]))
+check("moved: 0.05 units at 1000 is caught", addon.moved(far, [(1000.05, 0.0, 0.0)]))
+check("moved: float noise at 1000 is ignored", not addon.moved(far, [(1000.001, 0.0, 0.0)]))
+very_far = [(10000.0, 0.0, 0.0)]
+check("moved: 0.5 units at 10000 is caught", addon.moved(very_far, [(10000.5, 0.0, 0.0)]))
+check("moved: float noise at 10000 is ignored", not addon.moved(very_far, [(10000.005, 0.0, 0.0)]))
+check("moved: a far point elsewhere does not loosen a near one",
+      addon.moved([(0.0, 0.0, 0.0), (1000000.0, 0.0, 0.0)], [(0.01, 0.0, 0.0), (1000000.0, 0.0, 0.0)]))
+check("moved: error from a large coordinate on the same point is allowed",
+      not addon.moved([(0.0, 0.0, 10000.0)], [(0.001, 0.0, 10000.0)]))
 
 # recovery data cleanup
 def data(users=0, fake=False, library=None, asset=None):

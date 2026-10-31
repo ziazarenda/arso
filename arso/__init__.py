@@ -110,16 +110,25 @@ def sample_points(obj, include_axes):
     return points
 
 
+POSITION_ABS_TOLERANCE = 1e-5
+POSITION_REL_TOLERANCE = 2e-6  # about 17 steps of 32-bit float precision
+
+
 def moved(before, after):
-    """True if any sampled point ended up somewhere else."""
+    """True if any sampled point ended up somewhere else.
+
+    Each point is compared on its own: float error grows with how far the
+    point is from the origin, so the allowance is relative to that point
+    (never to the largest coordinate elsewhere in the scene).
+    """
     if len(before) != len(after):
         return True
-    scale = max([1.0] + [abs(c) for point in before for c in point])
-    tolerance = 1e-4 * scale
-    return any(
-        max(abs(a - b) for a, b in zip(old, new)) > tolerance
-        for old, new in zip(before, after)
-    )
+    for old, new in zip(before, after):
+        size = max(abs(c) for c in (*old, *new))
+        allowed = POSITION_ABS_TOLERANCE + POSITION_REL_TOLERANCE * size
+        if any(abs(a - b) > allowed for a, b in zip(old, new)):
+            return True
+    return False
 
 
 def remove_unused_data(data, object_type):
@@ -219,8 +228,9 @@ class OBJECT_OT_apply_rotation_scale_origin(bpy.types.Operator):
             for current in affected:
                 if moved(positions[current], sample_points(current, current not in objects)):
                     raise RuntimeError(
-                        "Blender cannot hold this hierarchy in place (a parent with non-uniform scale "
-                        "and a rotated child). Make the parent's scale uniform or unparent first")
+                        "Blender cannot hold this hierarchy in place. This happens with a parent that has "
+                        "non-uniform scale and a rotated child, or with constraints or drivers on a child. "
+                        "Make the parent's scale uniform, unparent, or remove those first")
 
         except Exception as exc:
             failure = f"'{current.name}': could not {step}: {short_error(exc)}"
@@ -240,6 +250,16 @@ class OBJECT_OT_apply_rotation_scale_origin(bpy.types.Operator):
                     context.view_layer.update()
                 except Exception as recovery:
                     recovery_errors.append(f'Could not refresh restored objects: {short_error(recovery)}')
+                # Do not assume the restore worked: check data and positions.
+                for obj, data in originals.items():
+                    if obj.data != data:
+                        recovery_errors.append(f"'{obj.name}': original data was not restored")
+                for obj in affected:
+                    try:
+                        if moved(positions[obj], sample_points(obj, obj not in objects)):
+                            recovery_errors.append(f"'{obj.name}': could not be fully restored to its original position")
+                    except Exception as recovery:
+                        recovery_errors.append(f"'{obj.name}': could not verify the restore: {short_error(recovery)}")
             for data, object_type in working:
                 try:
                     remove_unused_data(data, object_type)

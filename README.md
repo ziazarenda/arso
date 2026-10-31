@@ -37,7 +37,7 @@ The error identifies the affected object. Fix it and run the command again.
 - Mesh has no vertices, or curve has no points.
 - Curve is 2D: Blender's Apply Rotation operation requires changing it to 3D first.
 - A child whose transforms may need adjustment cannot be edited.
-- A parent with non-uniform scale (for example 1, 2, 3) that has a rotated child. Blender's own Apply cannot hold this in place, because the combination is a shear that location/rotation/scale cannot store, and it silently moves the child. This add-on checks the result, undoes everything and reports **No objects changed**. Make the parent's scale uniform or unparent the child first.
+- Blender cannot keep the hierarchy in place. The usual cause is a parent with non-uniform scale (for example 1, 2, 3) and a rotated child: that combination is a shear that location/rotation/scale cannot store, and Blender's own Apply silently moves the child. Constraints or drivers on a child can have the same effect. This add-on checks the result, undoes everything, verifies the undo and reports **No objects changed**. Make the parent's scale uniform, unparent the child, or remove the constraint or driver first.
 
 One blocked object stops the selected batch before any changes. Other native Blender restrictions, and the shear case above, are caught during the operation and trigger recovery.
 
