@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+dist/
+.venv/
+.ruff_cache/
+.kit.json.bak
+*.blend1
+.DS_Store
