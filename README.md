@@ -1,58 +1,129 @@
 # Apply Rotation, Scale, Origin
 
-Author: ziazarenda. Blender 4.0 or newer.
+One menu entry that does three things you normally do by hand on every imported or modelled asset: **apply rotation**, **apply scale**, and **move the origin to the centre of the geometry**. It does this safely: it checks the selection first, keeps children and everything else in place, and puts everything back if something goes wrong.
 
-Apply rotation and scale, then move each selected mesh or curve's origin to its geometry center. The origin uses Blender's **Median** method, as in the original addon.
+> **Blender 4.0 or newer.** Works on **meshes and curves** in Object Mode.
 
-## Install and use
+[image or gif: before and after, objects with rotated and scaled transforms and off-centre origins]
 
-1. Disable and remove any earlier version (the add-on folder is now called `arso`).
-2. Install `arso-<version>.zip` from the Releases page (Edit > Preferences > Add-ons > Install from Disk) and enable it.
-3. Select meshes or curves in Object Mode.
-4. Run **Object > Apply > Rotation, Scale, Origin**.
+---
 
-The operator ID is unchanged: `object.apply_rotation_scale_origin`. Existing assigned shortcuts should continue to work. No shortcut is assigned automatically.
+## Contents
 
-## What changed
+- [Why](#why)
+- [Installation](#installation)
+- [Usage](#usage)
+- [What exactly happens](#what-exactly-happens)
+- [Safety checks](#safety-checks)
+- [When it refuses to run](#when-it-refuses-to-run)
+- [Folder structure](#folder-structure)
+- [Licence](#licence)
 
-- Shared mesh and curve data is left linked. If a selected object has multiple real data users, the whole batch stops before any changes. Make that data single-user manually if you want to process it separately. There is no extra checkbox.
-- Apply Rotation & Scale explicitly leaves location unapplied. Centering the origin can still change the object's Location values while keeping its geometry in place.
-- Unsupported selected types, such as cameras, lights and Empties, are ignored.
-- Selection stays unchanged, and the original active object is restored.
-- Errors name the object and failed step. Blender operator cancellations are checked too.
-- If either step fails, the selected batch's original data and the affected objects' transforms are restored. A successful recovery reports **No objects changed**.
-- If recovery cannot finish, the message says **Use Undo** and keeps an undoable operation.
-- A successful operation can be undone as one step with Ctrl+Z.
+---
 
-Single-user objects use independent working data as a recovery copy. This never silently breaks existing links: shared data is rejected first. The addon removes unused temporary data after recovery and unused original data after success. Data with another user, a fake user, library ownership or asset status is preserved.
+## Why
 
-## Cases that stop before changes
+Game engines and many other tools expect clean transforms: rotation at 0, scale at 1, and an origin that sits on the object. In Blender that normally means:
 
-The error identifies the affected object. Fix it and run the command again.
+1. `Ctrl+A` → Rotation & Scale
+2. Right-click → Set Origin → Origin to Geometry
 
-- Mesh or curve data has multiple real users. A fake user alone does not block the operation.
-- Object cannot be edited, is a library override, or cannot use different data.
-- Object uses bone or vertex parenting.
-- Selected object has constraints, an animation action, NLA tracks or drivers. Use a static copy for this operation.
-- Mesh has no vertices, or curve has no points.
-- Curve is 2D: Blender's Apply Rotation operation requires changing it to 3D first.
-- A child whose transforms may need adjustment cannot be edited.
-- Blender cannot keep the hierarchy in place. The usual cause is a parent with non-uniform scale (for example 1, 2, 3) and a rotated child: that combination is a shear that location/rotation/scale cannot store, and Blender's own Apply silently moves the child. Constraints or drivers on a child can have the same effect. This add-on checks the result, undoes everything, verifies the undo and reports **No objects changed**. Make the parent's scale uniform, unparent the child, or remove the constraint or driver first.
+...for every object, while watching out for children that jump, shared mesh data that changes other objects, and animation that breaks. This add-on does both steps in one click and checks for those problems before it touches anything.
 
-One blocked object stops the selected batch before any changes. Other native Blender restrictions, and the shear case above, are caught during the operation and trigger recovery.
+---
 
-Modifiers are kept. Applying transforms or moving the origin can affect modifiers that depend on local coordinates or the origin, just as with Blender's own commands. Review the result before continuing.
+## Installation
 
-## Tests and building
+1. Download `arso.zip` from the [Releases](../../releases) page (or use **Code → Download ZIP**).
+2. In Blender open **Edit → Preferences → Add-ons**.
+3. Open the drop-down in the top right, choose **Install from Disk…** and pick the zip.
+4. Enable **Apply Rotation, Scale, Origin**.
 
-    python build.py                 plain tests, Blender tests, then dist/arso-<version>.zip
-    python build.py --headless      same, without a Blender window
-    python build.py --tests-only    run the tests, build nothing
+[image of the Install from Disk menu]
 
-- `tests/plain/` checks the add-on's logic with stand-ins for `bpy`. No Blender needed.
-- `tests/blender/operator.py` runs the operator in a real Blender on the built zip, in an isolated settings folder: shared data is rejected without changes, parent/child geometry stays in place, origins end up centered, selection and the active object are restored, and blocked objects (constraints, 2D curves, empty meshes) stop the batch.
-- **Undo (Ctrl+Z) is checked by hand.** Run the command on a copy of your project and confirm one Ctrl+Z undoes the whole operation.
+---
 
-`build.py`, `tests/plain/_run_all.py` and `tests/blender/_run_in_blender.py` come from [blender-addon-kit](https://github.com/ziazarenda/blender-addon-kit). Update them with `python sync_kit.py <this repo>` from the kit, not by hand.
+## Usage
 
-License: MIT, as declared in the original project README.
+1. Switch to **Object Mode** and select one or more meshes or curves.
+2. Open **Object → Apply → Rotation, Scale, Origin** (the same menu as `Ctrl+A` in the viewport).
+3. The result is reported in the status bar, for example *Applied rotation and scale, centered origins on 3 object(s)*.
+
+You can also search for **Apply Rotation, Scale, Origin** with `F3`. The operator id is `object.apply_rotation_scale_origin`, so you can assign it a shortcut.
+
+[image of the Object → Apply menu with the new entry at the top]
+
+The command supports **Undo**.
+
+---
+
+## What exactly happens
+
+For each selected mesh or curve, parents first, then children:
+
+1. **Apply rotation and scale.** Location is left alone.
+2. **Origin to Geometry** (median centre), so the origin ends up in the middle of the object.
+3. **Children and everything else stay put.** Children of the selected objects keep their world position, and the result is verified.
+
+Only meshes and curves are processed. Other selected objects are ignored.
+
+[image of an object with children before and after]
+
+---
+
+## Safety checks
+
+Applying a transform in Blender can quietly move things or change other objects. This add-on checks first and verifies afterwards:
+
+- **Nothing is changed unless every selected object passes the checks.** If one object has a problem, you get a message for each problem and no object changes.
+- **Work happens on a copy of the mesh or curve data.** The untouched original is kept until the end. If anything fails along the way, the original data and every transform value are put back.
+- **Positions are verified.** Sample points of every affected object (vertices or curve points, up to 64 each, plus the object axes for children) are compared before and after. If anything moved, the operation is rolled back.
+- **The restore is verified too.** If something could not be restored, the message says so and tells you to use **Undo**.
+- **Selection is restored.** The active object stays the active object.
+- **Temporary data is cleaned up.** Unused leftovers are removed, and data that is used elsewhere, has a fake user, is linked from a library or is marked as an asset is never deleted.
+
+---
+
+## When it refuses to run
+
+The add-on stops without changing anything, and says why, when an object:
+
+| Problem | What to do |
+|---------|------------|
+| Its mesh or curve data is shared with other objects | Make it single-user first |
+| Is not editable, or is a library override | Make a local copy |
+| Has constraints | Remove them or bake the object |
+| Has an action, NLA tracks or drivers | Use a static copy |
+| Uses bone, vertex or three-vertex parenting | Use object parenting |
+| Is a 2D curve | Change it to 3D first |
+| Has no vertices, or a curve has no points | Nothing to apply |
+| Has a child that cannot be edited | Make the child local |
+
+It also stops, and restores everything, if Blender cannot hold a hierarchy in place. That happens with a parent that has non-uniform scale and a rotated child, because the result would need a shear. Make the parent's scale uniform or unparent first.
+
+[image of a warning message in the status bar]
+
+---
+
+## Folder structure
+
+```text
+arso/
+└── __init__.py     the whole add-on: the operator, the safety checks and the menu entry
+```
+
+The add-on is a single file on purpose, since it only adds one command. Inside it:
+
+| Part | Purpose |
+|------|---------|
+| `object_problems` | Checks one object before anything is changed |
+| `transform_snapshot` | Saves transform values so they can be restored |
+| `sample_points` / `moved` | Measures whether anything changed position |
+| `OBJECT_OT_apply_rotation_scale_origin` | The operator: check, work on copies, verify, recover |
+| `menu_func` / `register` | Adds the entry to **Object → Apply** |
+
+---
+
+## Licence
+
+See the `LICENSE` file.
