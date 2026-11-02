@@ -4,7 +4,7 @@ One menu entry that does three things you normally do by hand on every imported 
 
 > **Blender 4.0 or newer.** Works on **meshes and curves** in Object Mode.
 
-[image or gif: before and after, objects with rotated and scaled transforms and off-centre origins]
+![Before and after: rotated and scaled objects with off-centre origins](docs/images/objects_with_rotated_and_scaled_transforms.gif)
 
 ---
 
@@ -39,8 +39,6 @@ Game engines and many other tools expect clean transforms: rotation at 0, scale 
 3. Open the drop-down in the top right, choose **Install from Disk…** and pick the zip.
 4. Enable **Apply Rotation, Scale, Origin**.
 
-[image of the Install from Disk menu]
-
 ---
 
 ## Usage
@@ -51,7 +49,7 @@ Game engines and many other tools expect clean transforms: rotation at 0, scale 
 
 You can also search for **Apply Rotation, Scale, Origin** with `F3`. The operator id is `object.apply_rotation_scale_origin`, so you can assign it a shortcut.
 
-[image of the Object → Apply menu with the new entry at the top]
+![The Object → Apply menu with the new entry at the top](docs/images/object_apply_menu.png)
 
 The command supports **Undo**.
 
@@ -67,7 +65,7 @@ For each selected mesh or curve, parents first, then children:
 
 Only meshes and curves are processed. Other selected objects are ignored.
 
-[image of an object with children before and after]
+![Children stay in place after applying](docs/images/object_with_children.gif)
 
 ---
 
@@ -101,7 +99,7 @@ The add-on stops without changing anything, and says why, when an object:
 
 It also stops, and restores everything, if Blender cannot hold a hierarchy in place. That happens with a parent that has non-uniform scale and a rotated child, because the result would need a shear. Make the parent's scale uniform or unparent first.
 
-[image of a warning message in the status bar]
+![A warning when the mesh data is shared with another object](docs/images/duplicate_linked_warning_message.gif)
 
 ---
 
